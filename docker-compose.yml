@@ -1,9 +1,15 @@
 version: '3'
 
+x-node-environment: &node-environment
+  EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://host.docker.internal:1234/v1}
+  EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-lm-studio}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-GGUF}
+
 services:
   container_1:
     image: chord_test
     container_name: node_1
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_1:/app/logs
@@ -11,10 +17,10 @@ services:
     command: /bin/bash
     tty: true
     stdin_open: true
-
   container_2:
     image: chord_test
     container_name: node_2
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_2:/app/logs
@@ -26,6 +32,7 @@ services:
   container_3:
     image: chord_test
     container_name: node_3
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_3:/app/logs
@@ -37,6 +44,7 @@ services:
   container_4:
     image: chord_test
     container_name: node_4
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_4:/app/logs
@@ -48,6 +56,7 @@ services:
   container_5:
     image: chord_test
     container_name: node_5
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_5:/app/logs
@@ -59,6 +68,7 @@ services:
   container_6:
     image: chord_test
     container_name: node_6
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_6:/app/logs
@@ -70,6 +80,7 @@ services:
   container_7:
     image: chord_test
     container_name: node_7
+    environment: *node-environment
     volumes:
       - ${PWD}/distributed:/app/code
       - ${PWD}/logs/container_7:/app/logs
@@ -90,4 +101,3 @@ services:
     command: /bin/bash
     tty: true
     stdin_open: true
-  

@@ -142,6 +142,12 @@ elif  pagina== "Eliminar un archivo":
     # Entrada del nombre del archivo
     nombre_archivo = st.text_input("Introduce el nombre del archivo que deseas eliminar en 'app/database':")
     
-    response=delete_document(nombre_archivo)
-    
-    st.write(f"Respuesta \n {response}")
+    confirmar = st.checkbox("Confirmo que quiero eliminar este documento")
+    if st.button("Eliminar documento", type="primary"):
+        if not nombre_archivo.strip():
+            st.warning("Introduce el nombre del archivo que deseas eliminar.")
+        elif not confirmar:
+            st.warning("Confirma la eliminación antes de continuar.")
+        else:
+            response = delete_document(nombre_archivo.strip())
+            st.write(f"Respuesta \n {response}")

@@ -1,58 +1,136 @@
-Para correr el proyecto
+# InfoChord
 
-- Construir la imagen de docker 
-- Levantar el docker compose
-  - ``` docker-compose up -d ```
-  
-- levantar los nodos
-    - 
-    ```
-    docker exec -it  node_{$i}  bin/bash
+**InfoChord is a research prototype for distributed semantic document search.** It combines a Streamlit client, an OpenAI-compatible embedding service, and Python server nodes organized around a Chord-inspired ring. The repository is useful as a systems/AI portfolio project; it is not a production-ready or security-audited document service.
 
-    ```
-    - 
-    ```
-    python app/code/server.py
-    ```
-    - levantar cliente:
-   
-    ```
-    docker exec -it  client_1  bin/bash
-    ```
-- Se recomienda 3  o mas para garantizar resistencia >=2
-- en el cliente ```streamlit run app/code/index.py```
-- en los contenedores server ```python app/code/server.py```
-- Las base de datos se linkean directamente en cada contenedor
-- Los logs analogamente
-- Recordar que en el server en la parte de if __name__ se puede cambiar las configuraciones
-- Tener activado el server de embeddings de lmstudio
-- Si se cambia de generador de embeddings
-- ir a distributed/helper/embedding_generator.py y mirar la ````api client = OpenAI(base_url="http://host.docker.internal:1234/v1", api_key="lm-studio") ````o la que se vaya a usar.
+## What it demonstrates
 
-# Estrutura del proyecto:
-El proyecto representa un sistema de búsqueda distribuido, en el permite la insercción, eliminación, modificación y búsqueda de estos archivos, para ello se proporciona una interfaz gráfica realizada en streamlit con el objetivo de brindar un entorno intuitivo y transparente al uso de la solución. 
-Los documentos a añadir deben de tener un nombre y una extensión (En caso de no brindarse esta, la extensión por defecto será *PlainText*) ![Ejemplo de insertar un archivo](ejemplo_insertar_archivo.png)   
-No pueden existir dos documento con igual nombre(incluye la extensión ). ![Ejemplo conflicto si se quiere subir un archivo que ya existe con el mismo nombre](ejemplo_no_existir_dos_documentos_igual_nombre.png).
-Los archivos tanto el nombre como el texto plano, se enviarán hacia algun servicio que genere un embedding para poder crear un *SRI* basado en este.
+- A client for document insertion, update, deletion, search, and retrieval.
+- Text chunking and vector embedding through an external OpenAI-compatible endpoint.
+- A distributed node layer that routes document and query work through the ring and stores data in node-local SQLite databases.
+- A containerized, multi-process development setup that can be explored locally.
 
-- Interfáz Gráfica:
-La interfaz gráfica es el cliente el cual brindará todas las opciones de nuestro servidor de manera transparente de cara al cliente, en ningún momento este sabrá que es un sistema distribuido. Se brinda una página web generada con streamlit. 
-- Backend:
-  El backend está compuesto por una serie de servidores distribuidos, donde todos tienen las mismas condiciones, osea pueden procesar los pedidos, se utiliza la arquitectura Chord para estos.
-  La arquitectura distribuida como se menciona anteriormente fue Chord dado que es sencilla y ademas muy poderosa, al ser una *DHT* distribuida permite que a cada nodo le asignemos como dueño de solo un grupo de archivos, los cuales se selecciona al computar el hash al nombre completo del archivo, se utiliza *SHA-1*, por las mismas bondades función de mapeo hace que la carga de los nodos este balanceada a medida que crece el volumen de carga, cada nodo tiene el grupo de documentos del cual es dueño, más un grupo de estos el cual sirve como replica, existe la posibilidad de replicar hasta en N nodos, en la configuración del server, por ello para realizar operaciones que modifiquen el estado de la base de datos es necesario de cumplir con el mínimo de nodos, osea *Cantidad de nodos réplica + 1*.
-  
-  Nuestro proyecto es un proyecto multicapa:
-  - Nodo de Chord:
-   Esta capa es la más elemental tiene toda la lógica de ser un nodo de chord, como unirse a la red y poder reconocer cuales son las llaves que pertenece a cada nodo.
-  - Gestión del líder:
-   En esta capa se gestiona, la elección y sincrinización con respecto al lider, además de la gestión del servidor de nombres para las url internas de cada nodo. 
-  - Guardado de información:
-   En esta capa se gestiona la posesión de un servidor por cada nodo, con la posibilidad de poder almacenar información, así como encargarse de replicarla.
- - Sincronización de la información:
-   En esta capa se gestiona como se comporta la red una vez hay una variación en la estrutura de la misma para asegurar la consistencia de la misma.
-  - Base de datos distribuida:
-   En esta capa se tiene en cuenta que desde cualquier nodo de chord desde el que acceda el cliente será capaz de redireccinar al dueño de la información para que haga las operaciones pertinentes, así como tener la lógica de como resolver los problemas causados por la misma posible desestabilización de la red
-  - Buscador distribuido: 
-   En esta capa se tiene utiliza la misma base de datos distribuida para guardar la información asi como hacer los servicios de creación de los embeddings, asi como de los objetos a guardar en la base de datos, y poder procesar query.
-  - Servidor:
-  Gestiona y sincroniza como un todo el buscador distribuido, añadiendo la url [search.search](search.search) al servidor de nombres para que el cliente pueda acceder a la red como primera forma, ademas en todo momento tanto para el cliente y como los nodos, se guarda una caché de al menos 3 nodos de la red cada cierto tiempo, así como de realizar broadcast como última opción.
+The source includes replication and node-synchronization logic. The repository does not currently include automated tests that establish durability, consistency, availability, or recovery guarantees. Treat those properties as implementation goals, not verified service-level guarantees.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[User] --> UI[Streamlit client<br/>client/ui/app.py]
+    UI --> API[Client API and node discovery]
+    API -->|HTTP CRUD and search| N1[Distributed server node]
+    API -->|HTTP CRUD and search| N2[Distributed server node]
+    N1 <-->|Chord membership, routing,<br/>replication and synchronization| N2
+    N1 --> DB1[(Node-local SQLite)]
+    N2 --> DB2[(Node-local SQLite)]
+    N1 --> EMB[OpenAI-compatible embedding endpoint]
+    N2 --> EMB
+```
+
+At a high level, the UI calls the client API; the API discovers server nodes; nodes coordinate ownership, storage, and query work; and embedding-dependent operations call the configured provider. Each Compose node gets its own mounted database and log directory. The diagram is conceptual and does not imply that every failure or recovery scenario has been validated.
+
+### Request flow (source-level)
+
+- **Search**: `client/api.py` selects a known node and requests `/query`. The distributed search code passes a query handle along successor nodes, checks database stability, and adds local matching documents before returning results.
+- **Document CRUD**: the client sends a serialized request to a selected node; the server can redirect it to the current owner. Insert/update report progress through a separate endpoint.
+- **Embedding**: node-side document processing calls the configured OpenAI-compatible API. A reachable provider/model is required for embedding-dependent work.
+
+These are descriptions of the current code paths, not runtime-verified claims about correctness during failures or topology changes.
+
+## UI snapshots
+
+The repository includes two original UI examples:
+
+![Document insertion example](ejemplo_insertar_archivo.png)
+
+![Duplicate document name example](ejemplo_no_existir_dos_documentos_igual_nombre.png)
+
+### Code map
+
+| Area | Responsibility |
+| --- | --- |
+| `client/ui/` | Streamlit pages and user interaction |
+| `client/api.py`, `client/discovery.py` | Client requests and server discovery |
+| `distributed/server.py`, `distributed/searcher.py` | Node startup, service endpoints, search coordination |
+| `distributed/chord/` | Chord-oriented membership, storage, replication, and synchronization |
+| `distributed/helper/` | Persistence, document processing, embeddings, and query helpers |
+| `shared/` | Shared logging utility |
+
+## Requirements
+
+- Docker Engine/Desktop with Compose v2.
+- An OpenAI-compatible embedding endpoint reachable from the containers. The default is `http://host.docker.internal:1234/v1`, intended for a local provider such as LM Studio.
+- The embedding model configured in `distributed/config.py` must be available from that provider. Defaults can be overridden with `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, and `EMBEDDING_MODEL` in the root `.env` file (start from `.env.example`).
+
+## Run a local demo
+
+Compose creates seven interactive node containers and one client container. It does **not** automatically start the node or UI processes; start those manually after the containers are up.
+
+1. Create local configuration and set provider values if needed:
+
+   ```powershell
+   Copy-Item .env.example .env
+   # Edit .env with local, non-committed overrides when required.
+   ```
+
+2. Build the image and create the containers:
+
+   ```powershell
+   docker build -t chord_test .
+   docker compose up -d
+   docker compose ps
+   ```
+
+3. In separate terminals, start at least three server processes (example):
+
+   ```powershell
+   docker exec -it -w /app/code node_1 python server.py
+   docker exec -it -w /app/code node_2 python server.py
+   docker exec -it -w /app/code node_3 python server.py
+   ```
+
+4. Start the client UI:
+
+   ```powershell
+   docker exec -it -w /app/code client_1 streamlit run ui/app.py --server.address 0.0.0.0
+   ```
+
+5. Open [http://localhost:8501](http://localhost:8501). Use disposable, non-sensitive sample text for the demo.
+
+The Docker daemon and embedding endpoint must be available for a live run. Do not upload private documents to a demo environment. Data and logs are stored in local directories mounted by Compose; remove demo data only after stopping the containers and confirming the relevant local paths.
+
+To stop the containers:
+
+```powershell
+docker compose down
+```
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `EMBEDDING_BASE_URL` | `http://host.docker.internal:1234/v1` | OpenAI-compatible embeddings API base URL |
+| `EMBEDDING_API_KEY` | `lm-studio` | API key passed to the OpenAI client; use a local-only value for providers that do not require authentication |
+| `EMBEDDING_MODEL` | `nomic-ai/nomic-embed-text-v1.5-GGUF` | Embedding model identifier sent to the provider |
+| `CHORD_PORT` | `8001` | Node protocol port |
+| `HTTP_PORT` | `8000` | Node HTTP API port |
+
+`.env` is local configuration and must not contain real credentials in a public checkout. `.env.example` contains safe defaults only.
+
+## Validation status
+
+- **Automated tests:** a standard-library regression test covers the UI delete confirmation (`python -m unittest discover -s tests -v`). `distributed/chord/clients_test/` contains additional manual client scripts that require a running cluster.
+- **Compose configuration:** `docker compose config --quiet` passed during repository review; Compose reports the legacy top-level `version` field as obsolete.
+- **Runtime demo:** not verified in this environment because the Docker daemon was unavailable and the `chord_test` image was not present.
+- **Distributed guarantees:** no fault-injection or consistency test results are currently published.
+
+## Safety and known limitations
+
+- The UI is a prototype; use disposable data and do not expose it to untrusted users.
+- Operations depend on a compatible embedding service and model being available.
+- Compose starts interactive containers, not a health-checked production cluster.
+- The project has no automated coverage for node failure, recovery, consistency, or multi-node CRUD behavior.
+- The Dockerfile and dependency stack need modernization and a reproducible build audit before production use.
+
+## Spec-driven project notes
+
+GitHub Spec Kit is initialized in `.specify/`; the project constitution and showcase specification are under `specs/001-infochord-showcase/`. The specification records project expectations and validation gaps; it is not evidence that those guarantees are already implemented.
