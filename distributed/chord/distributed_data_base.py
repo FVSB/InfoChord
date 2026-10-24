@@ -93,7 +93,10 @@ class DistributedDataBase(SyncStoreNode):
         """
         log_message(f"Entrando a chechear la estabilidad",func=self.wait_for_stability)
         addr_from = request.remote_addr
+        deadline = time.monotonic() + 60
         while not self.is_db_stable():
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Database did not stabilize within 60 seconds")
             log_message(f'Esperando a que la db sea estable para tramitar el post de {addr_from} ',func=self.wait_for_stability)
             time.sleep(0.5) # Tiempo de espera   
     def upload_file(self):

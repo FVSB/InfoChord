@@ -1,3 +1,4 @@
+from infochord_protocol import codec as wire
 import socket
 import traceback
 import logging
@@ -7,7 +8,6 @@ from helper.utils import getShaRepr
 from helper.query import QueryHandle
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import zmq
-import pickle
 
 # Class to reference a Chord node
 class ChordNodeReference:
@@ -28,20 +28,20 @@ class ChordNodeReference:
         # log_message(f'Typo de op {type(op)}  tipo de data{type(data)}')
         data = (op, data)
         # Serializar el objeto
-        data = pickle.dumps(data)
+        data = wire.dumps(data)
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(wire.SOCKET_TIMEOUT)
                 s.connect((self.ip, self.port))
-                s.settimeout(20)  # Decir que a lo sumo espera 20 segundos
-                s.sendall(data)
-                new_data = s.recv(1024)
+                wire.send_frame(s, data)
+                new_data = wire.recv_frame(s)
                 # log_message(f'La data es {new_data}',func=self._send_data)
                 if len(new_data) < 1:
                     log_message(
                         f"Se quiso enviar al nodo {self.ip } una peticion de tipo {op} y el len de new_data es {len(new_data)}",
                         func=self._send_data,
                     )
-                data_format = pickle.loads(new_data)  # Al tipo de dato de python
+                data_format = wire.loads(new_data)  # Al tipo de dato de python
 
                 # if not isinstance(data_format,ChordNodeReference):
                 #    log_message(f'La respuesta recibida del nodo {self.id} es {data_format} de tipo {type(data_format)}',func=self._send_data)

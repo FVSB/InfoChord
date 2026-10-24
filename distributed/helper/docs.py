@@ -1,5 +1,5 @@
+from infochord_protocol import codec as wire
 from datetime import datetime
-import pickle
 import tiktoken
 import numpy as np
 from .utils import getShaRepr
@@ -78,8 +78,6 @@ def dividir_texto(texto, modelo='gpt-3.5-turbo', max_tokens=512):
     return trozos_texto, len(tokens)
 
 # Ejemplo de uso
-texto = "Este es un texto de ejemplo que vamos a dividir en varios pedazos según el límite de tokens."
-trozos, num_tokens = dividir_texto(texto, max_tokens=1900)
 
 
 class Document:
@@ -105,7 +103,7 @@ class Document:
         self.text: str = text
         self.record: DocsRecords = DocsRecords(self.id)
     def get_in_bytes(self) -> bytes:
-        return pickle.dumps(self)
+        return wire.dumps(self)
 
     def delete(self):
         """
@@ -148,8 +146,8 @@ def get_document_from_bytes(data:bytes)->Document:
     Returns:
         Document: _description_
     """
-    doc= pickle.loads(data)
-    if  not issubclass(doc,Document):
+    doc= wire.loads(data)
+    if not isinstance(doc, Document):
         raise Exception(f'los bytes deben contener un document pero contienen un {type(doc) } {doc}')
     return doc
 
@@ -172,6 +170,7 @@ class EmbeddingDocument(Document):
         if super().update(other):
             self.embedding_list=other.embedding_list
             self.embedding_title_list=other.embedding_title_list
+            self.text_chunks=other.text_chunks
             return True
         return False
     

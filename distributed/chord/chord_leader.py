@@ -1,3 +1,4 @@
+from infochord_protocol import codec as wire
 from chord.node import *
 
 
@@ -242,19 +243,19 @@ class Leader(ChordNode):
         if option==CHECK_IN_ELECTION: # Se quiere comprobar que se está en elección
            # log_message(F"Se quiere saber la opcion {CHECK_IN_ELECTION} CHECK_IN_ELECTION ",func=self.handle_request)
             r=self._check_sub_ring_in_election()
-            b=pickle.dumps(r)
+            b=wire.dumps(r)
            # log_message(F"La respuesta  la opcion {CHECK_IN_ELECTION} CHECK_IN_ELECTION  es {r} en bytes {b}",func=self.handle_request)
             return b
         if option==CHECK_NETWORK_STABILITY:# Esto solo lo responde el lider, Responde si su predecesor no esta en eleccion ni el tampoco
           #  log_message(F"Se quiere saber la opcion {CHECK_NETWORK_STABILITY} CHECK_NETWORK_STABILITY ",func=self.handle_request)
             r=self._check_network_stability()
-            b=pickle.dumps(r)
+            b=wire.dumps(r)
           #  log_message(F"La respuesta  la opcion {CHECK_NETWORK_STABILITY} CHECK_NETWORK_STABILITY  es {r} en bytes {b}",func=self.handle_request)
             return b # Retorna True si la red es estable False si no lo es
         if option==GET_LEADER:# Quiere que devuelvas el lider
           #  log_message(F"Se quiere saber la opcion {GET_LEADER} GET_LEADER ",func=self.handle_request)
             r=self.leader
-            b=pickle.dumps(r)
+            b=wire.dumps(r)
           #  log_message(F"La respuesta  la opcion {GET_LEADER} GET_LEADER  es {r} en bytes {b}",func=self.handle_request)
             return b
         return super().handle_request(data,option,a)

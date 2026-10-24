@@ -1,7 +1,7 @@
+from infochord_protocol import codec as wire
 from chord.chord_leader import *
 from flask import Flask, request, jsonify, Response, abort, redirect, url_for
 import socket
-import jsonpickle
 from helper.docs import *
 from helper.utils import *
 from helper.document_gestor import DataReplicatedGestor
@@ -13,6 +13,30 @@ from http import HTTPStatus
 
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = wire.MAX_MESSAGE_BYTES
+
+
+@app.before_request
+def validate_wire_request():
+    if request.method == "POST":
+        if request.mimetype != "application/json":
+            return jsonify(message="Protocol v1 requires application/json"), 415
+        try:
+            value = wire.loads(request.get_data())
+            if request.path in ("/upload", "/update"):
+                if not isinstance(value, tuple) or len(value) != 2 or not all(isinstance(x, str) for x in value):
+                    raise wire.ProtocolError("Expected (title, text)")
+                if not value[0].strip() or len(value[0]) > 1024 or not value[1].strip():
+                    raise wire.ProtocolError("Non-empty title and text required")
+            if request.path == "/delete_file" and (not isinstance(value, str) or not value.strip()):
+                raise wire.ProtocolError("Non-empty title required")
+        except wire.ProtocolError as exc:
+            return jsonify(message=str(exc)), 400
+
+
+@app.errorhandler(TimeoutError)
+def operation_timed_out(_error):
+    return jsonify(message="Cluster not ready before operation deadline"), 503
 app.logger.disabled = (
     True  # Desactivar el  logguer de flask para que no haya conflicto con el mio
 )
@@ -49,6 +73,8 @@ class StoreNode(Leader):
         
     
     def setup_routes(self):
+        app.add_url_rule("/health/live", endpoint="health_live", view_func=lambda: jsonify(status="live", protocol=wire.VERSION))
+        app.add_url_rule("/health/ready", view_func=self.health_ready)
         # Registrar la ruta y vincularla al método de instancia
         app.add_url_rule("/upload", view_func=self.upload_file, methods=["POST"])
         app.add_url_rule(
@@ -78,6 +104,15 @@ class StoreNode(Leader):
             view_func=self.delete_file,
             methods=["POST"],
         )  # Esto es para eliminar un archivo
+
+    def health_ready(self):
+        try:
+            with db.engine.connect() as connection:
+                connection.exec_driver_sql("SELECT 1")
+            ready = self.is_db_stable()
+            return jsonify(status="ready" if ready else "stabilizing", protocol=wire.VERSION), 200 if ready else 503
+        except Exception:
+            return jsonify(status="unavailable", protocol=wire.VERSION), 503
 
     def start_threads(self):
         """Inicia todos los hilos
@@ -246,7 +281,7 @@ class StoreNode(Leader):
                     HTTPStatus.BAD_REQUEST,
                 )
 
-            node, doc = pickle.loads(data)
+            node, doc = wire.loads(data)
             doc: Document = doc
             node: ChordNodeReference = node
 
@@ -271,7 +306,7 @@ class StoreNode(Leader):
                     )  # Añadir al gestor de eventos por si no es persistente que lo elimine
 
                     return Response(
-                        pickle.dumps((SAVE_DOC_WAITING_OK, guid)),
+                        wire.dumps((SAVE_DOC_WAITING_OK, guid)),
                         status=HTTPStatus.OK,
                     )
                 else:
@@ -297,7 +332,7 @@ class StoreNode(Leader):
                 )
 
                 return Response(
-                    pickle.dumps((SAVE_DOC_WAITING_OK, guid)),
+                    wire.dumps((SAVE_DOC_WAITING_OK, guid)),
                     status=HTTPStatus.OK,
                 )
         except Exception as e:
@@ -326,7 +361,7 @@ class StoreNode(Leader):
                     HTTPStatus.BAD_REQUEST,
                 )
 
-            node, new_doc = pickle.loads(data)
+            node, new_doc = wire.loads(data)
             new_doc: Document = new_doc
             node: ChordNodeReference = node
             doc_id = new_doc.id
@@ -336,7 +371,7 @@ class StoreNode(Leader):
                     func=self.update_document_like_replica,
                 )
                 return Response(
-                    pickle.dumps((ERROR_NO_EXIST_DOC_IN_THIS_REPLICA, doc_id)),
+                    wire.dumps((ERROR_NO_EXIST_DOC_IN_THIS_REPLICA, doc_id)),
                     status=HTTPStatus.NOT_FOUND,
                 )
 
@@ -353,7 +388,7 @@ class StoreNode(Leader):
                     func=self.update_document_like_replica,
                 )
                 return Response(
-                    pickle.dumps((ERROR_THIS_IS_NOT_THE_LASTED_VERSION, doc_id)),
+                    wire.dumps((ERROR_THIS_IS_NOT_THE_LASTED_VERSION, doc_id)),
                     HTTPStatus.NOT_ACCEPTABLE,
                 )
             old_owner = db.get_node_id_owner_by_doc_id(
@@ -376,7 +411,7 @@ class StoreNode(Leader):
             )
 
             return Response(
-                pickle.dumps((SAVE_DOC_WAITING_UPDATED, guid)), status=HTTPStatus.OK
+                wire.dumps((SAVE_DOC_WAITING_UPDATED, guid)), status=HTTPStatus.OK
             )
         except Exception as e:
             log_message(
@@ -394,7 +429,7 @@ class StoreNode(Leader):
                 func=self.persist_insert_document,
             )
             data = self.get_data_from_request()
-            document_id, guid = pickle.loads(data)  # La data recibida
+            document_id, guid = wire.loads(data)  # La data recibida
             # Chequear que el documento está en nuestro sistema
             if not db.has_document(
                 document_id
@@ -441,11 +476,7 @@ class StoreNode(Leader):
         """
         # El cliente manda (Nombre archivo, archivo)
         try:
-            file = request.files["file"]
-
-            data = file.stream.read()
-
-            return data
+            return request.get_data()
         except Exception as e:
             log_message(f"Hubo un error tratando de sacar la data del request Error:{e} \n {traceback.format_exc()}",func=self.get_data_from_request)
             raise Exception(e)
@@ -476,8 +507,7 @@ class StoreNode(Leader):
                 f"Se va a enviar un mensaje a nodo {node.id} url:{url}",
                 func=self.send_file_to_node,
             )
-            file = {"file": data}
-            response = rq.post(url, files=file,timeout=timeout)
+            response = rq.post(url, data=data, headers={"Content-Type": "application/json"}, timeout=timeout)
             response.raise_for_status()  # Levanta una excepción para códigos de estado HTTP 4xx/5xx
             return response
            
@@ -513,7 +543,7 @@ class StoreNode(Leader):
             for replica in succ_list:
                 if replica.id == self.id:
                     continue  # Nunca me mando a guardar como replica a mi mismo
-                data = pickle.dumps((self.ref, document))
+                data = wire.dumps((self.ref, document))
                 log_message(
                     f"Se va a enviar a guarda en la replica {replica.id} el documento {document.id} a guardar el documento",
                     func=self.save_in_my_replicas,
@@ -530,7 +560,7 @@ class StoreNode(Leader):
                 )
 
                 data = response.content  # Tomar la respuesta
-                code, guid = pickle.loads(data)  # Tomar los datos
+                code, guid = wire.loads(data)  # Tomar los datos
                 log_message(
                     f"Guardado el archivo {document.id} en la replica {replica.id} con guid {guid}",
                     func=self.save_in_my_replicas,
@@ -578,7 +608,7 @@ class StoreNode(Leader):
                     response = self.send_file_to_node(
                         replica,
                         "persist_insert_document",
-                        pickle.dumps((document_id, guid)),
+                        wire.dumps((document_id, guid)),
                     )
                     if response.status_code != 200:
                         log_message(
@@ -754,7 +784,7 @@ class StoreNode(Leader):
                 HTTPStatus.BAD_REQUEST,
             )
 
-        name, doc_to_save = pickle.loads(doc_to_save)
+        name, doc_to_save = wire.loads(doc_to_save)
         log_message(f"La data es {name}{doc_to_save}", func=self.get_request)
 
         log_message(f"El archivo tiene nombre {name}", func=self.get_request)
@@ -882,36 +912,9 @@ class StoreNode(Leader):
                 func=self.get_file_by_name,
             )
 
-            data_bytes = doc.get_in_bytes()  # Mandarlo a bytes
-            log_message(
-                f"El documento con nombre {name} tiene de texto {doc.text}",
-                func=self.get_file_by_name,
-            )
-            data_bytes = pickle.dumps(doc.text)
-
-            chunk_size = 1024  # Tamaño de cada paquete (1 KB)
-
-            total_length = len(data_bytes)
-
-            if total_length == 0:
-                abort(404, description="No data available")
-
-            def generate():
-                part_number = 1
-                for i in range(0, total_length, chunk_size):
-                    chunk = data_bytes[i : i + chunk_size]
-                    if part_number >= start:
-                        #paquete = Paquete(part_number, chunk, False)
-                        #yield paquete.serialize()
-                        paquete=(part_number,chunk,False)
-                        yield obj_to_bytes(paquete)
-                    part_number += 1
-
-            log_message(
-                f"Se va a enviar el documento con nombre {name} y data {doc.text}",
-                func=self.get_file_by_name,
-            )
-            return Response(generate(), content_type="application/octet-stream")
+            if doc.record.is_delete:
+                return jsonify(message='Document deleted'), 404
+            return Response(wire.dumps(doc.text), content_type='application/json')
         except Exception as e:
             log_message(
                 f" A ocurrido un error {e} tratando de dar en el endpoint de devulver un archivo por nombre {traceback.format_exc()}",
@@ -1125,7 +1128,7 @@ class StoreNode(Leader):
                     jsonify({"message": 'Bad Request: Parámetro "param" requerido'}),
                     HTTPStatus.BAD_REQUEST,
                 )
-            doc_name: str = pickle.loads(data)
+            doc_name: str = wire.loads(data)
             
             log_message(f"El documento a eliminar es {doc_name} de tipo {type(doc_name)}",func=self.delete_file)
             doc_id = getShaRepr(doc_name)

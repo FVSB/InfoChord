@@ -1,3 +1,4 @@
+from infochord_protocol import codec as wire
 import socket
 import threading
 import sys
@@ -11,7 +12,6 @@ from helper.utils import getShaRepr
 from chord.reference import ChordNodeReference
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import zmq
-import pickle
 
 
 # Function to hash a string using SHA-1 and return its integer representation
@@ -44,10 +44,11 @@ class ChordNode:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
             # Conectar al servidor
+            client_socket.settimeout(wire.SOCKET_TIMEOUT)
             client_socket.connect((ip, port))
 
             # Enviar los datos
-            client_socket.sendall(data)
+            wire.send_frame(client_socket, data)
 
             # Cerrar la conexión
             client_socket.close()
@@ -315,7 +316,7 @@ class ChordNode:
             )
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            to_send = pickle.dumps(
+            to_send = wire.dumps(
                 (op, data)
             )  # Serializar el objeto para poder enviarlo
             s.sendto(
@@ -370,7 +371,7 @@ class ChordNode:
                     log_message(
                         f"El tipo de lo recibido en broadcast es {type(message)} ,  {type(address)}"
                     )
-                    message: tuple[int, ChordNodeReference] = pickle.loads(message)
+                    message: tuple[int, ChordNodeReference] = wire.loads(message)
                     log_message(
                         f"El tipo de lo recibido deserializado en broadcast es {type(message)} ,  {type(address)}"
                     )
@@ -1156,7 +1157,7 @@ class ChordNode:
 
         if data_resp:
 
-            response = pickle.dumps(data_resp)
+            response = wire.dumps(data_resp)
             if len(response) < 1 or len(response) > 1020:
                 log_message(
                     f"El len de la respuesta a enviar es de {len(response) } que era un {data_resp.id}",
@@ -1166,8 +1167,8 @@ class ChordNode:
             # conn.sendall(response)
             # socket.send(response)
         else:
-            # socket.send(pickle.dumps(' '))
-            response = pickle.dumps("Errrorrrrrr ")
+            # socket.send(wire.dumps(' '))
+            response = wire.dumps("Errrorrrrrr ")
 
             log_message(
                 f"El len de la respuesta a enviar es de {len(response) } que era un Enviando el string error  buscando la opcion {option}",
@@ -1178,18 +1179,19 @@ class ChordNode:
     def server_handle(self, conn, addr):
         # log_message(f'new connection from {addr}',func=ChordNode.start_server)
 
-        data = conn.recv(1024)
-        data = pickle.loads(data)
-        option = int(data[0])
-        a = data[1]
-        if isinstance(a, dict):
-            data = (data[0], ChordNodeReference(a["ip"]))
-
-        data_resp = None
-        response = self.handle_request(data, option, a)
-
-        conn.sendall(response)
-        conn.close()
+        try:
+            data = wire.loads(wire.recv_frame(conn))
+            if not isinstance(data, tuple) or len(data) != 2 or type(data[0]) is not int:
+                raise wire.ProtocolError("Expected (operation, payload)")
+            option, a = data
+            if isinstance(a, dict):
+                data = (option, ChordNodeReference(a["ip"]))
+            response = self.handle_request(data, option, a)
+            wire.send_frame(conn, response)
+        except (ValueError, OSError) as exc:
+            log_message(f"Rejected node request: {type(exc).__name__}")
+        finally:
+            conn.close()
 
     def start_server(self):
 

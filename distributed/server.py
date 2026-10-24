@@ -260,8 +260,8 @@ if __name__ == "__main__":
     log_message("Hello from Server node")
     ip = socket.gethostbyname(socket.gethostname())
     query_gestor=QueryGestor(func_get_embedding_list=create_embedding,func_score_embedding=cosine_similarity)
-    node = SearcherServer(ip, m=3,query_gestor=query_gestor,url="search.search")
+    node = SearcherServer(ip, m=10,query_gestor=query_gestor,url="search.search")
     node.start_node()  # Iniciar el pipeline
 
     while True:
-        pass
+        time.sleep(1)

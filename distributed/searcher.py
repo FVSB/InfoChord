@@ -1,3 +1,4 @@
+from infochord_protocol import codec as wire
 
 
 from chord.distributed_data_base import *
@@ -28,7 +29,6 @@ class DistributedSearcher(DistributedDataBase):
             methods=["GET"],
             
         )#Funcion para conocer el progreso despues de insertar o actualizar un documento
-        super().setup_routes()
         app.add_url_rule(
             "/process_query_handle",
             view_func=self._process_query_handle,
@@ -66,7 +66,12 @@ class DistributedSearcher(DistributedDataBase):
         super()._process_to_save_document(guid, name, doc_to_save, sub_url, crud_code)
     
     def _create_and_save_document(self, guid: str, name: str, doc_to_save: str, sub_url: str, crud_code: CrudCode):
-        ok_crud, nodes_save= super()._create_and_save_document(guid, name, doc_to_save, sub_url, crud_code)
+        try:
+            ok_crud, nodes_save = super()._create_and_save_document(guid, name, doc_to_save, sub_url, crud_code)
+        except Exception as exc:
+            self.document_tracker_gestor.error_track(guid=guid, error_mg="Document processing failed; check provider and nodes")
+            log_message(f"Document processing failed: {type(exc).__name__}", func=self._create_and_save_document)
+            return False, []
         # Añadir esto para utilzar el track de por donde va.
         
         if ok_crud:
@@ -100,7 +105,7 @@ class DistributedSearcher(DistributedDataBase):
             _type_: _description_
         """
         #return jsonify({"file":obj_to_bytes(query_handle)}),HTTPStatus.OK
-        return jsonpickle.encode(query_handle),HTTPStatus.OK
+        return Response(wire.dumps(query_handle), content_type="application/json"), HTTPStatus.OK
     
     def call_succ_to_process_query(self,query_handle:QueryHandle)->QueryHandle:
         try:
@@ -117,8 +122,8 @@ class DistributedSearcher(DistributedDataBase):
                 return query_handle
             #response_json=response.json()
             #file_content=response_json['file']
-            #new_query_handle:QueryHandle=pickle.loads(file_content)
-            new_query_handle:QueryHandle=jsonpickle.decode(response.text)
+            #new_query_handle:QueryHandle=wire.loads(file_content)
+            new_query_handle:QueryHandle=wire.loads(response.text)
             log_message(f"Mi sucesor me envio el query handle de {new_query_handle.guid} Es activo {new_query_handle.is_stable_response()}",func=self.call_succ_to_process_query)
             return new_query_handle
         except Exception as e:
@@ -144,7 +149,7 @@ class DistributedSearcher(DistributedDataBase):
             log_message(f"Se a recibido una peticion de procesar una query desde {addr_from}")
             data=self.get_data_from_request()
             
-            query_handle:QueryHandle=pickle.loads(data)
+            query_handle:QueryHandle=wire.loads(data)
             
             log_message(f"Se va a procesar la query {query_handle.guid} desde la ip {addr_from}",func=self._process_query_handle)
                     
@@ -164,7 +169,7 @@ class DistributedSearcher(DistributedDataBase):
             #return self.resolve_query(query_handle)
             return self.return_query_helper(self.resolve_query(query_handle))
         except Exception as e:
-            log_message(f"Error al tratar de procesar la query con guid {query_handle.guid} Error: {e}  \n {traceback.format_exc()}",func=self._process_query_handle)
+            log_message(f"Error processing query: {type(e).__name__}", func=self._process_query_handle)
             raise Exception(e)
     def resolve_query(self,query_handle:QueryHandle)->QueryHandle:
         """
@@ -241,9 +246,16 @@ class DistributedSearcher(DistributedDataBase):
         )
         try:
             query:str=str(request.args.get("query",""))
-            max_results:int=int(request.args.get("max_results",20))
-            min_score:float=float(request.args.get("min_score",0))
+            try:
+                max_results = int(request.args.get("max_results", 20))
+                min_score = float(request.args.get("min_score", 0))
+            except ValueError:
+                return jsonify(message="Invalid numeric query parameters"), 400
             posibles_extensions:list[str]=request.args.getlist("extensions")
+            import math
+            if not query.strip() or len(query) > 10000 or not 1 <= max_results <= 100 or not math.isfinite(min_score):
+                return jsonify(message='Invalid query, max_results or min_score'), 400
+
             
             self.wait_for_stability()
             

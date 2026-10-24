@@ -1,153 +1,90 @@
+"""Local-only InfoChord demonstration interface."""
+
 import streamlit as st
-from api import *
-from shared.logger import log_message
+from api import insert_document, update_document, delete_document, make_query, download_file
 
-# Simulación de documentos con score
-log_message(f"Iniciado")
+st.set_page_config(page_title="InfoChord", page_icon="🔍")
 
-# Función para realizar la búsqueda
-def realizar_busqueda(query, extensiones):
-    documentos = make_query(query=query, posibles_extensions=extensiones)
-    return documentos
-  
-def subir_o_actualizar_archivo(subir:bool):
-    name="Subir" if subir else "Actualizar"
-    st.title(f"📤 {name} un Archivo") 
 
-    # Especificar el nombre del archivo a buscar
-    nombre_archivo = st.text_input("Introduce el nombre del archivo que deseas buscar en 'app/database':")
-    
-    # Ruta de la carpeta donde se buscará el archivo
-    ruta_archivo = os.path.join("app", "database", nombre_archivo)
+def call_api(function, *args, **kwargs):
+    try:
+        return function(*args, **kwargs)
+    except Exception as exc:
+        st.error(str(exc))
+        return None
 
-    # Botón para buscar y subir el archivo
-    if st.button(f"Buscar y {name} Archivo"):
-        if os.path.isfile(ruta_archivo):
-            # Si el archivo existe, permitir subirlo
-            with open(ruta_archivo, "rb") as file:
-                st.download_button(label="Descargar Archivo", data=file, file_name=nombre_archivo)
-                st.success(f"El archivo '{nombre_archivo}' ha sido encontrado y está listo para descargar.")
-                contenido_archivo = file.read()  # Leer el contenido del archivo como str
-                contenido_str = contenido_archivo.decode("utf-8") 
-                st.text_area("Contenido del Archivo:", contenido_str, height=300)  # Mostrar contenido en un área de texto
-                response=""
-                if subir:
-                    response=insert_document(title=nombre_archivo,text=contenido_str)
-                else:
-                    response=update_document(title=nombre_archivo,text=contenido_str)
-                st.success(f"El archivo '{nombre_archivo} {response}' .")
-        else:
-            st.error(f"El archivo '{nombre_archivo}' no existe en la carpeta 'app/database'.")
-    
-    # Opción para escribir un nuevo archivo
-    st.write("O también puedes escribir el contenido de un nuevo archivo:")
-    contenido_nuevo = st.text_area("Escribe el contenido del nuevo archivo:")
-    
-    # Botón para subir el nuevo archivo
-    if st.button(f"{name} Nuevo Archivo"):
-        #if contenido_nuevo:
-        #    # Guardar el nuevo archivo en la carpeta especificada
-        #    with open(ruta_archivo, "w") as new_file:
-        #        new_file.write(contenido_nuevo)
-        #    st.success(f"El nuevo archivo '{nombre_archivo}' ha sido creado y subido a 'app/database'.")
-        response=""
-        if contenido_nuevo:
-            if subir:
-                    response=insert_document(title=nombre_archivo,text=contenido_nuevo)
-            else:
-                    response=update_document(title=nombre_archivo,text=contenido_nuevo) 
-           
-            st.success(f"El nuevo archivo '{nombre_archivo}' {response}'.")
-        else:
-            st.warning("Por favor, escribe algo en el contenido del nuevo archivo.")
-    
-# Configuración de la página
-st.set_page_config(page_title="Motor de Búsqueda", page_icon="🔍")
 
-# Menú de selección de páginas
-pagina = st.sidebar.selectbox("Selecciona una página:", ["Inicio", "Motor de Búsqueda", "Solicitar Archivo","Subir un archivo","Actualizar un archivo","Eliminar un archivo"])
+pagina = st.sidebar.selectbox("Selecciona una página:", [
+    "Inicio", "Motor de Búsqueda", "Solicitar Archivo", "Subir un archivo",
+    "Actualizar un archivo", "Eliminar un archivo",
+])
 
-# Página de Inicio
 if pagina == "Inicio":
-    st.title("Bienvenido al Motor de Búsqueda")
-    st.write("Esta aplicación te permite buscar documentos y solicitar archivos.")
-    st.write("Utiliza el menú en la barra lateral para navegar a las diferentes secciones.")
-
-# Página de Motor de Búsqueda
+    st.title("InfoChord · búsqueda semántica distribuida")
+    st.write("Prototipo local con nodos Chord, embeddings y almacenamiento SQLite.")
+    st.info("Usa únicamente documentos de muestra. No es un servicio de producción.")
+elif pagina in ("Subir un archivo", "Actualizar un archivo"):
+    inserting = pagina == "Subir un archivo"
+    st.title("Subir documento" if inserting else "Actualizar documento")
+    uploaded = st.file_uploader("O selecciona un archivo de texto UTF-8", type=["txt", "md", "csv", "json", "log"])
+    suggested_title, suggested_text = "", ""
+    if uploaded is not None:
+        if uploaded.size > 9 * 1024 * 1024:
+            st.error("El archivo supera el límite de 9 MiB de la interfaz.")
+            st.stop()
+        try:
+            suggested_title, suggested_text = uploaded.name, uploaded.getvalue().decode("utf-8")
+        except UnicodeDecodeError:
+            st.error("Selecciona un archivo de texto UTF-8.")
+            st.stop()
+    title = st.text_input("Nombre del documento (por ejemplo, ejemplo.txt)", value=suggested_title)
+    text = st.text_area("Contenido del documento", value=suggested_text)
+    if st.button("Subir documento" if inserting else "Actualizar documento"):
+        if not title.strip() or not text.strip():
+            st.warning("Introduce un nombre y contenido.")
+        else:
+            result = call_api(insert_document if inserting else update_document, title, text)
+            if result is not None:
+                st.success("Operación completada")
+                st.write(str(result.get("message", "Operación completada")) if isinstance(result, dict) else str(result))
 elif pagina == "Motor de Búsqueda":
-    st.title("🔍 Motor de Búsqueda Personalizado")
-
-    # Entrada de la consulta
+    st.title("Búsqueda semántica")
     query = st.text_input("Introduce tu consulta:")
-
-    # Entrada de extensiones
-    extensiones = st.text_input("Introduce extensiones posibles separadas por comas:")
-    extensiones = extensiones.replace(',', ' ').split()
-    extensiones = [ext for ext in extensiones if ext]
-
-    # Botón para realizar la búsqueda
+    extensions = st.text_input("Extensiones separadas por comas (opcional):")
     if st.button("Realizar Búsqueda"):
-        if query:
-            resultados = realizar_busqueda(query, extensiones)
-            
-            if resultados and len(resultados) > 0:
-                for doc in resultados:
-                    title = doc['title']
-                    snippet = doc["snipet"]
-                    id_ = doc["id"]
-                    score = doc["score"]
-                
-                    with st.expander(f"{title} (Score: {score})"):
-                        st.write(snippet)
-                        
-                        # Crear una clave única para cada botón
-                        button_key = f"button_{id_}"
-                        if st.button(f"Mostrar contenido completo de {title}", key=button_key):
-                            st.session_state[button_key] = True
-                    
-                        # Mostrar el contenido completo si se presionó el botón
-                        if st.session_state.get(button_key):
-                            st.write(f"Buscando el documento completo de {title}")
-                            text = download_file(title, True)
-                            st.write(text)
-            else:
-                st.info("No se encontraron documentos que coincidan con la consulta.")
+        if not query.strip():
+            st.warning("Introduce una consulta.")
         else:
-            st.warning("Por favor, introduce una consulta.")
-
-# Página para solicitar archivos
+            results = call_api(make_query, query, extensions.replace(",", " ").split())
+            if results is not None:
+                st.session_state["results"] = results
+    # Persist results across rerenders so retrieval buttons remain functional.
+    for doc in st.session_state.get("results", []):
+        with st.expander(f"{doc['title']} · {doc['score']:.3f}"):
+            st.write(doc["snipet"])
+            if st.button("Mostrar documento", key=f"document-{doc['id']}"):
+                text = call_api(download_file, doc["title"])
+                if text is not None:
+                    st.write(text)
 elif pagina == "Solicitar Archivo":
-    st.title("📁 Solicitar Archivo")
-
-    # Entrada del nombre del archivo
-    file_name = st.text_input("Introduce el nombre del archivo:")
-
-    # Botón para enviar la solicitud
+    st.title("Solicitar documento")
+    title = st.text_input("Nombre del documento:")
     if st.button("Enviar Solicitud"):
-        if file_name:
-            # Lógica para enviar la solicitud
-            st.success(f"Solicitud enviada para el archivo '{file_name}'.")
-            text=download_file(file_name,False)
-            st.write(f"El texto es \n {text}")
+        if not title.strip():
+            st.warning("Introduce el nombre del documento.")
         else:
-            st.warning("Por favor, completa todos los campos.")
-# Página para subir un archivo
-elif pagina == "Subir un archivo":
-   subir_o_actualizar_archivo(True)
-elif pagina== "Actualizar un archivo":
-    subir_o_actualizar_archivo(False)
-elif  pagina== "Eliminar un archivo":
-    st.title("🗑️ Eliminar un Archivo")
-
-    # Entrada del nombre del archivo
-    nombre_archivo = st.text_input("Introduce el nombre del archivo que deseas eliminar en 'app/database':")
-    
-    confirmar = st.checkbox("Confirmo que quiero eliminar este documento")
-    if st.button("Eliminar documento", type="primary"):
-        if not nombre_archivo.strip():
-            st.warning("Introduce el nombre del archivo que deseas eliminar.")
-        elif not confirmar:
-            st.warning("Confirma la eliminación antes de continuar.")
+            text = call_api(download_file, title)
+            if text is not None:
+                st.write(text)
+                st.download_button("Descargar texto", text, file_name=title)
+elif pagina == "Eliminar un archivo":
+    st.title("Eliminar documento")
+    title = st.text_input("Nombre del documento que deseas eliminar:")
+    confirmed = st.checkbox("Confirmo que quiero eliminar este documento")
+    if st.button("Eliminar documento"):
+        if not title.strip() or not confirmed:
+            st.warning("Introduce el nombre y confirma la eliminación.")
         else:
-            response = delete_document(nombre_archivo.strip())
-            st.write(f"Respuesta \n {response}")
+            result = call_api(delete_document, title.strip())
+            if result is not None:
+                st.write(str(result.get("message", "Operación completada")) if isinstance(result, dict) else str(result))

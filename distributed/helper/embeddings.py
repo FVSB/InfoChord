@@ -5,7 +5,7 @@ import tiktoken
 import numpy as np
 from typing import Callable
 
-client = OpenAI(base_url=EMBEDDING_BASE_URL, api_key=EMBEDDING_API_KEY)
+client = OpenAI(base_url=EMBEDDING_BASE_URL, api_key=EMBEDDING_API_KEY, timeout=20, max_retries=1)
 
 
 def cosine_similarity(embedding1, embedding2):

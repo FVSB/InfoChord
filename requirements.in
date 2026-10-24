@@ -1,0 +1,11 @@
+# Direct runtime dependencies. Generate the hashed, universal lock with:
+# uv pip compile requirements.in --python-version 3.11 --universal --generate-hashes -o requirements.txt
+Flask>=3.1,<4
+Pyro5>=5.15,<6
+pyzmq>=26,<28
+requests>=2.32.4,<3
+SQLAlchemy>=2.0.27,<2.1
+openai>=1.37,<2
+tiktoken>=0.7,<1
+numpy>=2,<3
+streamlit>=1.37,<2

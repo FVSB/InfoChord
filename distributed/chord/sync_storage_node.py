@@ -1,3 +1,4 @@
+from infochord_protocol import codec as wire
 from chord.storage_node import *
 
 
@@ -164,7 +165,7 @@ class SyncStoreNode(StoreNode):
                     HTTPStatus.BAD_REQUEST,
                 )
                 
-            node, new_doc = pickle.loads(data)
+            node, new_doc = wire.loads(data)
             new_doc: Document = new_doc
             node: ChordNodeReference = node
             doc_id = new_doc.id
@@ -188,7 +189,7 @@ class SyncStoreNode(StoreNode):
                 )
                 
                 return Response(
-                    pickle.dumps((SAVE_DOC_WAITING_OK, guid)),
+                    wire.dumps((SAVE_DOC_WAITING_OK, guid)),
                     status=HTTPStatus.OK,
                 )
             else: # Si está el documento en la db
@@ -206,7 +207,7 @@ class SyncStoreNode(StoreNode):
                         func=self.re_update_document_like_replica_after_sync,
                     )
                     return Response(
-                        pickle.dumps((ERROR_THIS_IS_NOT_THE_LASTED_VERSION, doc_id)),
+                        wire.dumps((ERROR_THIS_IS_NOT_THE_LASTED_VERSION, doc_id)),
                         HTTPStatus.OK,
                     )
                 old_owner = db.get_node_id_owner_by_doc_id(
@@ -229,7 +230,7 @@ class SyncStoreNode(StoreNode):
                 )
 
                 return Response(
-                    pickle.dumps((SAVE_DOC_WAITING_UPDATED, guid)), status=HTTPStatus.OK
+                    wire.dumps((SAVE_DOC_WAITING_UPDATED, guid)), status=HTTPStatus.OK
                 )
                 
             
@@ -307,7 +308,7 @@ class SyncStoreNode(StoreNode):
             if data is None:
                 log_message(f"La data es None", func=self.sync_keys_from_others)
 
-            tup: tuple[ChordNodeReference, Document] = pickle.loads(data)
+            tup: tuple[ChordNodeReference, Document] = wire.loads(data)
             node, document = tup
             doc_id = document.id
             log_message(f"El nodo {node} ha mandado a que me haga cargo del documento {document.title} texto: {document.text}",func=self.sync_keys_from_others)
@@ -566,7 +567,7 @@ class SyncStoreNode(StoreNode):
                 
                 
                 response_: Response = self.send_file_to_node(
-                    owner, "sync_keys_from_others", pickle.dumps((self.ref, document))
+                    owner, "sync_keys_from_others", wire.dumps((self.ref, document))
                 )
                 if (
                     response_.status_code != 200

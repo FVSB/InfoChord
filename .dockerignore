@@ -1,0 +1,14 @@
+.git
+.env
+.venv
+.codegraph
+.claude
+.specify
+agent-os
+.idea
+.vscode
+databases
+logs
+**/__pycache__
+**/*.pyc
+*.png

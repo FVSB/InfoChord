@@ -1,6 +1,6 @@
+from infochord_protocol import codec as wire
 #from ..distributed.helper.protocol_codes import FIND_NODES
 
-import pickle
 import socket
 import threading
 import time
@@ -67,7 +67,10 @@ class SearchServers:
             str: _description_
         """
         lis=self.list_.get_list()
+        deadline = time.monotonic() + 30
         while len(lis)==0:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("No server nodes discovered within 30 seconds")
             time.sleep(1)
             log_message(f"Esperando que la lista no este vacia")
             lis=self.list_.get_list()
@@ -76,15 +79,14 @@ class SearchServers:
         try:
             while True:
                 # Recibir datos del servidor
-                data = client_socket.recv(1024)
-                if not data:
-                    break
-                lis:list[str]=pickle.loads(data)
+                data = wire.recv_frame(client_socket)
+                lis:list[str]=wire.loads(data)
                 if not isinstance(lis,list):
                     raise Exception(f"debe recibir una lista de str no un {type(lis)}")
                 
                 #log_message(f"Mensaje recibido: {lis}", )
                 self.list_.update(lis)
+                break
         except Exception as e:
             log_message(f"Error al recibir datos: {e}")
         finally:
@@ -111,7 +113,7 @@ class SearchServers:
             try:     
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                to_send = pickle.dumps(
+                to_send = wire.dumps(
                     (28, None)
                 )  # Serializar el objeto para poder enviarlo
                 s.sendto(
@@ -122,6 +124,5 @@ class SearchServers:
                 time.sleep(time_)
             except:
                 log_message("Ocurrio un error al enviar el broadcast")
-
 
 

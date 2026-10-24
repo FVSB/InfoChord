@@ -1,103 +1,80 @@
-version: '3'
+name: infochord-demo
 
-x-node-environment: &node-environment
-  EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://host.docker.internal:1234/v1}
-  EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-lm-studio}
-  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-GGUF}
+x-node: &node
+  image: infochord-demo:local
+  build: .
+  init: true
+  environment: &node-env
+    EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://host.docker.internal:1234/v1}
+    EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-lm-studio}
+    EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5-GGUF}
+    DB_PATH: sqlite:////app/database/database.db
+    LOG_DIR: /app/logs
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://' + __import__('socket').gethostbyname(__import__('socket').gethostname()) + ':8000/health/ready', timeout=25)"]
+    interval: 10s
+    timeout: 30s
+    retries: 24
+    start_period: 30s
+  networks: [cluster]
 
 services:
-  container_1:
-    image: chord_test
-    container_name: node_1
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_1:/app/logs
-      - ${PWD}/databases/container_1:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
-  container_2:
-    image: chord_test
-    container_name: node_2
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_2:/app/logs
-      - ${PWD}/databases/container_2:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
+  node1:
+    <<: *node
+    volumes: [demo-node1-v1:/app/database]
+  node2:
+    <<: *node
+    volumes: [demo-node2-v1:/app/database]
+  node3:
+    <<: *node
+    volumes: [demo-node3-v1:/app/database]
+  node4:
+    <<: *node
+    profiles: [seven]
+    volumes: [demo-node4-v1:/app/database]
+  node5:
+    <<: *node
+    profiles: [seven]
+    volumes: [demo-node5-v1:/app/database]
+  node6:
+    <<: *node
+    profiles: [seven]
+    volumes: [demo-node6-v1:/app/database]
+  node7:
+    <<: *node
+    profiles: [seven]
+    volumes: [demo-node7-v1:/app/database]
+  ui:
+    image: infochord-demo:local
+    build: .
+    init: true
+    command: [streamlit, run, client/ui/app.py, --server.address=0.0.0.0, --browser.gatherUsageStats=false]
+    environment:
+      PYTHONPATH: /app/client:/app
+      LOG_DIR: /app/logs
+      STREAMLIT_SERVER_MAX_UPLOAD_SIZE: "10"
+    ports: ["127.0.0.1:8501:8501"]
+    networks: [cluster]
+    depends_on:
+      node1: {condition: service_healthy}
+      node2: {condition: service_healthy}
+      node3: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
 
-  container_3:
-    image: chord_test
-    container_name: node_3
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_3:/app/logs
-      - ${PWD}/databases/container_3:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
+networks:
+  cluster:
 
-  container_4:
-    image: chord_test
-    container_name: node_4
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_4:/app/logs
-      - ${PWD}/databases/container_4:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
-
-  container_5:
-    image: chord_test
-    container_name: node_5
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_5:/app/logs
-      - ${PWD}/databases/container_5:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
-
-  container_6:
-    image: chord_test
-    container_name: node_6
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_6:/app/logs
-      - ${PWD}/databases/container_6:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
-
-  container_7:
-    image: chord_test
-    container_name: node_7
-    environment: *node-environment
-    volumes:
-      - ${PWD}/distributed:/app/code
-      - ${PWD}/logs/container_7:/app/logs
-      - ${PWD}/databases/container_7:/app/database
-    command: /bin/bash
-    tty: true
-    stdin_open: true
-
-  container_8:
-    image: chord_test
-    container_name: client_1
-    volumes:
-        - ${PWD}/client:/app/code
-        - ${PWD}/logs/client_1:/app/logs
-        - ${PWD}/databases/client_1:/app/database
-    ports:
-      - "8501:8501"  # Expone el puerto de Streamlit
-    command: /bin/bash
-    tty: true
-    stdin_open: true
+volumes:
+  demo-node1-v1:
+  demo-node2-v1:
+  demo-node3-v1:
+  demo-node4-v1:
+  demo-node5-v1:
+  demo-node6-v1:
+  demo-node7-v1:
