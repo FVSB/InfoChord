@@ -1,0 +1,40 @@
+# Use an isolated project name (scripts/test-demo.ps1 or CI does this).
+x-test-env: &test-env
+  EMBEDDING_BASE_URL: http://embeddings:9000/v1
+  EMBEDDING_API_KEY: fixture-only
+  EMBEDDING_MODEL: fixture
+  DB_PATH: sqlite:////app/database/database.db
+  LOG_DIR: /app/logs
+
+services:
+  embeddings:
+    image: infochord-demo:local
+    init: true
+    command: [python, tests/mock_embeddings.py]
+    networks: [cluster]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:9000/health', timeout=5)"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+  node1:
+    environment: *test-env
+    depends_on:
+      embeddings: {condition: service_healthy}
+  node2:
+    environment: *test-env
+    depends_on:
+      embeddings: {condition: service_healthy}
+  node3:
+    environment: *test-env
+    depends_on:
+      embeddings: {condition: service_healthy}
+  ui:
+    ports: !reset []
+  test-runner:
+    image: infochord-demo:local
+    command: [python, -m, unittest, discover, -s, tests/integration, -v]
+    environment:
+      PYTHONPATH: /app/client:/app
+    networks: [cluster]
+    profiles: [test]
