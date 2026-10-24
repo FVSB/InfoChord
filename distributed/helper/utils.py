@@ -1,15 +1,14 @@
+from infochord_protocol import codec as wire
 import hashlib
 from flask import Flask, request, jsonify, Response
 import socket
-import jsonpickle
-import pickle
 import uuid
 import threading
 from enum import Enum, auto
 
 
 def obj_to_bytes(obj:object)->bytes:
-    return pickle.dumps(obj)
+    return wire.dumps(obj)
 def getShaRepr(data: str, max_value: int = 1024):
     """Hashea a SHA-1 los datos que entren y lo devuelve en un numero entre 1 y 16
 
@@ -68,12 +67,12 @@ def is_equal_list(lis_1:list,list_2:list)->bool:
     return set(lis_1)==set(list_2)
 
 def serialize_pyobj_to_json_file(obj) -> Response:
-    serialize = jsonpickle.encode(obj)
-    return jsonify(serialize)
+    serialize = wire.dumps(obj)
+    return Response(serialize, content_type="application/json")
 
 
 def deserialize_pyobj_from_json(data):
-    return jsonpickle.decode(data)
+    return wire.loads(data)
 
 
 class Paquete:
@@ -83,11 +82,11 @@ class Paquete:
         self.es_final = es_final
 
     def serialize(self):
-        return pickle.dumps(self)
+        return wire.dumps(self)
 
     @staticmethod
     def deserialize(data) -> "Paquete":
-        return pickle.loads(data)
+        return wire.loads(data)
 
 
 
@@ -177,17 +176,6 @@ class ThreadingSet:
         True si se elimino, False si no existia 
         """
         with self._lock:
-            if self.contains_item(item):return False
+            if not self.contains_item(item):return False
             self._set.remove(item)
             return  True
-        
-
-       
-    
-
-    
-        
-        
-        
-            
-        

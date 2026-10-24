@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash ~/agent-os/scripts/project-install.sh)",
+      "Bash(cp shared/logger.py client/shared/logger.py)",
+      "Bash(cp shared/logger.py distributed/shared/logger.py)",
+      "Bash(touch shared/__init__.py client/shared/__init__.py distributed/shared/__init__.py)"
+    ],
+    "additionalDirectories": [
+      "e:\\GitHub\\YAIO\\InfoChord"
+    ]
+  }
+}

@@ -1,27 +1,15 @@
-import requests
-import pickle
+"""Disposable document insertion probe; use the automated gate for validation."""
+import argparse
+from pathlib import Path
+import sys
 
-url='http://172.30.0.5:8000/update'
+ROOT = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(ROOT / "client"), str(ROOT)]
+from api import insert_document
 
-
-
-document='Lo modifique ahora'
-name='hola.txt'
-
-data=pickle.dumps((name,document))
-
-files={'file':data}
-
-   
-# Envía una solicitud POST con el archivo adjunto
-response = requests.post(url, files=files)
-
-# Imprime la respuesta del servidor
-print(response.status_code)
-print(response.text)
-
-
-
-# Hacer retrival
-
-url='http://172.31.0.8:8000/'
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("title")
+    parser.add_argument("text")
+    args = parser.parse_args()
+    print(insert_document(args.title, args.text))

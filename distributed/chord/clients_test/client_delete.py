@@ -1,21 +1,15 @@
+"""Delete probe requiring explicit confirmation; disposable demo data only."""
+import argparse
+from pathlib import Path
+import sys
 
-#/delete_file
+ROOT = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(ROOT / "client"), str(ROOT)]
+from api import delete_document
 
-import requests
-import pickle
-
-url='http://172.30.0.3:8000/delete_file'
-
-name='hola.txt'
-
-data=pickle.dumps(name)
-
-files={'file':data}
-
-   
-# Envía una solicitud POST con el archivo adjunto
-response = requests.post(url, files=files)
-
-# Imprime la respuesta del servidor
-print(response.status_code)
-print(response.text)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("title")
+    parser.add_argument("--confirm", action="store_true", required=True)
+    args = parser.parse_args()
+    print(delete_document(args.title))

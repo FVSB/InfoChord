@@ -1,0 +1,26 @@
+name: Demo quality gate
+on:
+  pull_request:
+  push:
+    branches: [main, showcase/infochord-portfolio]
+permissions:
+  contents: read
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Unit, build and isolated cluster scenarios
+        run: |
+          set -o pipefail
+          python scripts/check-demo.py 2>&1 | tee demo-gate.log
+      - name: Save diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gate-diagnostics
+          path: demo-gate.log

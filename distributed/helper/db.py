@@ -1,3 +1,4 @@
+from infochord_protocol import codec as wire
 from sqlalchemy import (
     create_engine,
     Column,
@@ -11,13 +12,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from helper.docs_class import Document
-from helper.logguer import log_message
+from helper.docs import Document
+from shared.logger import log_message
 import datetime
-import pickle
 import traceback
 # Crear el motor de base de datos
-engine = create_engine("sqlite:///app/database/database.db")
+from config import DB_PATH
+engine = create_engine(DB_PATH)
+
+# Refuse legacy object blobs before creating or changing any application tables.
+with engine.begin() as connection:
+    version = connection.exec_driver_sql("PRAGMA user_version").scalar()
+    tables = connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    if version != 1 and tables:
+        raise RuntimeError("Legacy/incompatible database. Use a NEW demo volume; old databases are never migrated automatically.")
+    if version not in (0, 1):
+        raise RuntimeError("Unsupported database format")
+    connection.exec_driver_sql("PRAGMA user_version=1")
 
 # Crear una sesión
 Session = sessionmaker(bind=engine)
@@ -79,7 +90,7 @@ def insert_document(document: Document, node_id: int, persistent: bool = False) 
     """
     try:
         session = Session()
-        serialized_data = pickle.dumps(document)
+        serialized_data = wire.dumps(document)
         to_save = Docs(
             id=document.id,
             title=document.title,
@@ -241,7 +252,7 @@ def get_document_by_id(id_document: int) -> Document:
     data = None
     if doc:
         
-        data: Document = pickle.loads(doc.document)  # Tomar el documento como objeto
+        data: Document = wire.loads(doc.document)  # Tomar el documento como objeto
     session.close()
     return data
 
@@ -267,7 +278,7 @@ def get_all_documents_by_extension(extensions:list[str],node_id:int)->list[Docum
     if docs is None:
         return response
     for doc in docs:
-        data:Document=pickle.loads(doc.document)
+        data:Document=wire.loads(doc.document)
         response.append(data)
     return response
 

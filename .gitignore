@@ -9,3 +9,13 @@
 databases/
 old/
 examples/
+distributed/chord_lider.py
+
+# Local configuration and Python-generated artifacts
+.codegraph/
+.env
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
