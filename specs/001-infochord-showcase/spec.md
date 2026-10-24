@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-infochord-showcase`
 **Created**: 2026-10-23
-**Status**: Draft
+**Status**: Implementation in progress ? runtime acceptance remains evidence-gated
 **Input**: Prepare the existing InfoChord prototype as a credible technical project and reproducible demo.
 
 ## User Scenarios & Testing
@@ -81,12 +81,21 @@ A contributor can distinguish safe defaults from machine-local settings and can 
 
 - The repository is a prototype, not a production-ready or security-audited service.
 - The Streamlit UI may remain Spanish while project-level showcase documentation is English.
-- Docker Compose currently provisions interactive containers; server/UI processes are started manually.
+- Docker Compose starts three nodes and the UI automatically; only the UI is published on loopback.
 - Runtime verification depends on Docker daemon availability and a reachable embedding provider.
 
 ## Out of Scope
 
-- Rewriting the distributed protocol or redesigning the database.
+- Changing document identity, replacing Chord or SQLite, or automatically migrating legacy databases.
 - Claiming availability, consistency, throughput, or fault-tolerance guarantees without a dedicated test effort.
 - Replacing the UI or embedding provider.
 - Publishing credentials, sample personal documents, or a deployed public service.
+
+## Approved follow-up acceptance (2026-10-23)
+
+- Application serialization is versioned, allow-listed JSON; no pickle/jsonpickle decoding remains in runtime paths.
+- TCP framing supports partial reads and enforces message/deadline limits. HTTP protocol changes are documented.
+- New v1 volumes isolate demo data; legacy databases are refused without modification. No mixed-version rollout.
+- The same Docker gate runs locally and in CI for CRUD/search, owner redirect, persistence, one-node failure/recovery and provider outage.
+- Client failures are bounded and visible; ambiguous writes are not retried automatically.
+- Real-provider evidence and current captures are required before claiming the presentation is verified.

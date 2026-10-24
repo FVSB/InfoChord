@@ -1,136 +1,134 @@
 # InfoChord
 
-**InfoChord is a research prototype for distributed semantic document search.** It combines a Streamlit client, an OpenAI-compatible embedding service, and Python server nodes organized around a Chord-inspired ring. The repository is useful as a systems/AI portfolio project; it is not a production-ready or security-audited document service.
+**A research prototype for distributed semantic document search:** Streamlit, an OpenAI-compatible embedding service, and Python nodes organized around a Chord-inspired ring, each with SQLite storage.
+
+This is a systems/AI portfolio project, **not a production-ready or security-audited service**. Implemented replication and synchronization logic are not proof of general consistency, availability or durability guarantees.
 
 ## What it demonstrates
 
-- A client for document insertion, update, deletion, search, and retrieval.
-- Text chunking and vector embedding through an external OpenAI-compatible endpoint.
-- A distributed node layer that routes document and query work through the ring and stores data in node-local SQLite databases.
-- A containerized, multi-process development setup that can be explored locally.
-
-The source includes replication and node-synchronization logic. The repository does not currently include automated tests that establish durability, consistency, availability, or recovery guarantees. Treat those properties as implementation goals, not verified service-level guarantees.
-
-## Architecture
+- Document insertion, update, explicit-confirmation deletion, semantic search and text retrieval.
+- Chunking and external vector embeddings, with distributed routing and node-local persistence.
+- Versioned JSON contracts instead of executable object deserialization.
+- A three-node Docker demo, readiness checks, bounded client operations and an automated integration gate.
 
 ```mermaid
 flowchart LR
-    U[User] --> UI[Streamlit client<br/>client/ui/app.py]
-    UI --> API[Client API and node discovery]
-    API -->|HTTP CRUD and search| N1[Distributed server node]
-    API -->|HTTP CRUD and search| N2[Distributed server node]
-    N1 <-->|Chord membership, routing,<br/>replication and synchronization| N2
-    N1 --> DB1[(Node-local SQLite)]
-    N2 --> DB2[(Node-local SQLite)]
-    N1 --> EMB[OpenAI-compatible embedding endpoint]
-    N2 --> EMB
+    U[User on localhost] --> UI[Streamlit UI :8501]
+    UI --> C[Client API and node discovery]
+    C -->|CRUD / search / retrieval| N1[Node 1]
+    C --> N2[Node 2]
+    C --> N3[Node 3]
+    N1 <-->|Routing / replication / synchronization| N2
+    N2 <--> N3
+    N3 <--> N1
+    N1 --> D1[(SQLite)]
+    N2 --> D2[(SQLite)]
+    N3 --> D3[(SQLite)]
+    N1 --> E[External embedding endpoint]
+    N2 --> E
+    N3 --> E
 ```
 
-At a high level, the UI calls the client API; the API discovers server nodes; nodes coordinate ownership, storage, and query work; and embedding-dependent operations call the configured provider. Each Compose node gets its own mounted database and log directory. The diagram is conceptual and does not imply that every failure or recovery scenario has been validated.
+The diagram is conceptual. CRUD may redirect to the owner; search carries a query handle around successor nodes, aggregates local matches, and checks stability. See [protocol and compatibility](docs/protocol.md).
 
-### Request flow (source-level)
+## Quick start — real embeddings
 
-- **Search**: `client/api.py` selects a known node and requests `/query`. The distributed search code passes a query handle along successor nodes, checks database stability, and adds local matching documents before returning results.
-- **Document CRUD**: the client sends a serialized request to a selected node; the server can redirect it to the current owner. Insert/update report progress through a separate endpoint.
-- **Embedding**: node-side document processing calls the configured OpenAI-compatible API. A reachable provider/model is required for embedding-dependent work.
-
-These are descriptions of the current code paths, not runtime-verified claims about correctness during failures or topology changes.
-
-## UI snapshots
-
-The repository includes two original UI examples:
-
-![Document insertion example](ejemplo_insertar_archivo.png)
-
-![Duplicate document name example](ejemplo_no_existir_dos_documentos_igual_nombre.png)
-
-### Code map
-
-| Area | Responsibility |
-| --- | --- |
-| `client/ui/` | Streamlit pages and user interaction |
-| `client/api.py`, `client/discovery.py` | Client requests and server discovery |
-| `distributed/server.py`, `distributed/searcher.py` | Node startup, service endpoints, search coordination |
-| `distributed/chord/` | Chord-oriented membership, storage, replication, and synchronization |
-| `distributed/helper/` | Persistence, document processing, embeddings, and query helpers |
-| `shared/` | Shared logging utility |
-
-## Requirements
-
-- Docker Engine/Desktop with Compose v2.
-- An OpenAI-compatible embedding endpoint reachable from the containers. The default is `http://host.docker.internal:1234/v1`, intended for a local provider such as LM Studio.
-- The embedding model configured in `distributed/config.py` must be available from that provider. Defaults can be overridden with `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, and `EMBEDDING_MODEL` in the root `.env` file (start from `.env.example`).
-
-## Run a local demo
-
-Compose creates seven interactive node containers and one client container. It does **not** automatically start the node or UI processes; start those manually after the containers are up.
-
-1. Create local configuration and set provider values if needed:
-
-   ```powershell
-   Copy-Item .env.example .env
-   # Edit .env with local, non-committed overrides when required.
-   ```
-
-2. Build the image and create the containers:
-
-   ```powershell
-   docker build -t chord_test .
-   docker compose up -d
-   docker compose ps
-   ```
-
-3. In separate terminals, start at least three server processes (example):
-
-   ```powershell
-   docker exec -it -w /app/code node_1 python server.py
-   docker exec -it -w /app/code node_2 python server.py
-   docker exec -it -w /app/code node_3 python server.py
-   ```
-
-4. Start the client UI:
-
-   ```powershell
-   docker exec -it -w /app/code client_1 streamlit run ui/app.py --server.address 0.0.0.0
-   ```
-
-5. Open [http://localhost:8501](http://localhost:8501). Use disposable, non-sensitive sample text for the demo.
-
-The Docker daemon and embedding endpoint must be available for a live run. Do not upload private documents to a demo environment. Data and logs are stored in local directories mounted by Compose; remove demo data only after stopping the containers and confirming the relevant local paths.
-
-To stop the containers:
+Requirements: Docker Desktop/Engine, Compose **2.24.4+**, PowerShell, and a reachable OpenAI-compatible embedding provider with the configured model. The default endpoint targets a local provider such as LM Studio; no model or provider server is bundled.
 
 ```powershell
-docker compose down
+Copy-Item .env.example .env
+# Edit .env to match your provider, key and loaded model. Never commit credentials.
+./scripts/start-demo.ps1
+```
+
+Open **http://localhost:8501**. Startup builds the image, checks the actual provider with disposable sample text, and starts three nodes and the UI automatically. No separate `docker exec` terminals are needed.
+
+Only the UI is published, bound to `127.0.0.1`. Node HTTP, RPC and discovery stay on the Compose network. Use disposable, non-sensitive text only.
+
+```powershell
+./scripts/stop-demo.ps1
+```
+
+Stopping preserves database volumes. The new demo uses isolated v1 volumes; old host database directories are not mounted, migrated or deleted. See the [two-minute walkthrough, capture checklist and troubleshooting](docs/demo.md).
+
+To explore seven nodes after the default demo is running:
+
+```powershell
+docker compose --profile seven up -d --wait --wait-timeout 300
+# Stop optional nodes too, without deleting their data:
+docker compose --profile seven down
+```
+
+## Tests and reproducibility
+
+Python 3.11+ is required on the host **only for the test orchestrator**; application/test dependencies run inside the Docker image.
+
+```powershell
+python scripts/check-demo.py
+# PowerShell wrapper:
+./scripts/test-demo.ps1
+```
+
+The gate builds a fresh image, runs unit tests, then starts a uniquely named isolated cluster. It exercises CRUD/search, owner redirection, provider outage, persisted data across restart, one stopped node and recovery. It stops only its own project and retains its volumes for inspection. CI runs the same command and saves diagnostics.
+
+**The deterministic embedding fixture is a test double, not a semantic model.** Passing fixture tests does not establish search quality with a real provider.
+
+For unit tests in an explicitly configured local Python environment:
+
+```powershell
+python -m pip install --require-hashes -r requirements.txt
+python -m unittest discover -s tests -v
+```
+
+The base image is pinned by digest. `requirements.in` lists direct dependencies; `requirements.txt` locks transitive versions and hashes. Unused spaCy/scikit-learn/SciPy dependencies were removed; the tiktoken tokenizer cache is populated while building, not at startup. Regenerate intentionally with:
+
+```powershell
+uv pip compile requirements.in --python-version 3.11 --universal --generate-hashes --upgrade -o requirements.txt
 ```
 
 ## Configuration
 
-| Variable | Default | Purpose |
+| Variable | Default / purpose |
+| --- | --- |
+| `EMBEDDING_BASE_URL` | `http://host.docker.internal:1234/v1` |
+| `EMBEDDING_API_KEY` | `lm-studio`; local-only placeholder, not a real credential |
+| `EMBEDDING_MODEL` | `nomic-ai/nomic-embed-text-v1.5-GGUF`; must be available from the provider |
+| `DB_PATH` | Compose uses `sqlite:////app/database/database.db` in each isolated volume |
+| `CHORD_PORT`, `HTTP_PORT` | Internal node ports, 8001 and 8000 |
+| `LOG_DIR` | `/app/logs`; application logs retain operation/error types, not document bodies or keys |
+
+## Validation status and limitations
+
+| Area | Implemented | Evidence |
 | --- | --- | --- |
-| `EMBEDDING_BASE_URL` | `http://host.docker.internal:1234/v1` | OpenAI-compatible embeddings API base URL |
-| `EMBEDDING_API_KEY` | `lm-studio` | API key passed to the OpenAI client; use a local-only value for providers that do not require authentication |
-| `EMBEDDING_MODEL` | `nomic-ai/nomic-embed-text-v1.5-GGUF` | Embedding model identifier sent to the provider |
-| `CHORD_PORT` | `8001` | Node protocol port |
-| `HTTP_PORT` | `8000` | Node HTTP API port |
+| Safe deletion UI | Explicit name, confirmation and button | Automated regression tests |
+| JSON contracts and TCP framing | Version, allow-list, size/depth checks, partial reads | Unit tests; no security certification |
+| JSON persistence and legacy rejection | New v1 storage; old files preserved | New-process persistence and unchanged-legacy-file tests |
+| Client failures | Bounded retries/redirects/polling, visible errors | Unit tests |
+| Multi-node CRUD and failure scenarios | Integration gate and CI workflow | **See [latest local evidence](docs/validation.md); do not infer a pass from test existence** |
+| Real-provider demo and current capture | Walkthrough and preflight provided | Pending until explicitly recorded in validation evidence |
 
-`.env` is local configuration and must not contain real credentials in a public checkout. `.env.example` contains safe defaults only.
+- No authentication, public deployment, load testing or general fault-tolerance guarantees.
+- Client and nodes must upgrade together. No mixed-version rollout or automatic legacy-data migration.
+- Title-based document identity remains unchanged and is not collision-resistant; do not use this prototype for irreplaceable documents.
+- A single successful failure/recovery scenario is not proof of consistency under arbitrary failures or topology changes.
 
-## Validation status
+## Code map
 
-- **Automated tests:** a standard-library regression test covers the UI delete confirmation (`python -m unittest discover -s tests -v`). `distributed/chord/clients_test/` contains additional manual client scripts that require a running cluster.
-- **Compose configuration:** `docker compose config --quiet` passed during repository review; Compose reports the legacy top-level `version` field as obsolete.
-- **Runtime demo:** not verified in this environment because the Docker daemon was unavailable and the `chord_test` image was not present.
-- **Distributed guarantees:** no fault-injection or consistency test results are currently published.
+| Area | Responsibility |
+| --- | --- |
+| `client/` | Streamlit, discovery and bounded HTTP client |
+| `distributed/server.py`, `distributed/searcher.py` | Node startup and distributed query coordination |
+| `distributed/chord/` | Membership, routing, replication and synchronization |
+| `distributed/helper/` | Documents, embeddings, query ranking and SQLite |
+| `infochord_protocol/` | Shared allow-listed JSON contracts and framing |
+| `tests/`, `scripts/` | Unit/integration scenarios, fixtures and demo commands |
 
-## Safety and known limitations
+Spec Kit is initialized in `.specify/`; expectations and tracked work are under `specs/001-infochord-showcase/`. Specifications describe acceptance criteria, not completed guarantees.
 
-- The UI is a prototype; use disposable data and do not expose it to untrusted users.
-- Operations depend on a compatible embedding service and model being available.
-- Compose starts interactive containers, not a health-checked production cluster.
-- The project has no automated coverage for node failure, recovery, consistency, or multi-node CRUD behavior.
-- The Dockerfile and dependency stack need modernization and a reproducible build audit before production use.
+### Historical UI examples
 
-## Spec-driven project notes
+These screenshots predate the current interface and are **not current runtime evidence**:
 
-GitHub Spec Kit is initialized in `.specify/`; the project constitution and showcase specification are under `specs/001-infochord-showcase/`. The specification records project expectations and validation gaps; it is not evidence that those guarantees are already implemented.
+![Original insertion example](ejemplo_insertar_archivo.png)
+![Original duplicate-name example](ejemplo_no_existir_dos_documentos_igual_nombre.png)

@@ -1,42 +1,23 @@
-# Implementation Plan: InfoChord Portfolio Showcase
+# Implementation Plan: Reproducible and Safe Local Showcase
 
-## Summary
+## Approved decisions
 
-Document the current prototype accurately, make the demo's destructive UI action explicit, and leave an auditable local PR candidate. Do not merge or push in this task.
+- Local demo only; no authentication/public deployment or merge to main.
+- Replace unsafe serializers across client, node protocol, query transfer and SQLite.
+- Use new isolated demo storage. Preserve old databases without loading or migrating them.
+- Preserve unrelated local Agent OS and Claude configuration edits.
 
-## Technical Context
+## Implementation
 
-- **Language/Version**: Python 3.11 in Docker; local host runtime not available for verified execution.
-- **Primary Dependencies**: Flask, Pyro5, SQLAlchemy, OpenAI-compatible embeddings, Streamlit (pinned in `requirements.txt`).
-- **Storage**: SQLite per container via mounted database directories.
-- **Testing**: One standard-library UI regression test plus four manual client scripts under `distributed/chord/clients_test/`; no distributed integration suite.
-- **Target Platform**: Docker Compose, with an external OpenAI-compatible embedding service (default host URL configured in `distributed/config.py`).
-- **Project Type**: Existing distributed-search prototype.
-- **Performance Goals**: None asserted in this showcase; measure before making claims.
-- **Constraints**: Pre-existing user changes under `agent-os/standards/` must remain untouched; `.git` is not writable in this environment; Docker daemon is unavailable.
-- **Scale/Scope**: One docs/specification pass and one narrow UI safety fix.
+1. Pin the Python 3.11 Debian image by digest, hash-lock imported runtime dependencies, cache tiktoken during build, and remove unused NLP libraries.
+2. Start three nodes and UI automatically in Compose; optionally start seven. Publish only loopback UI. Separate process/cluster readiness from provider preflight.
+3. Introduce explicit JSON v1 DTOs, bounded framing, numeric-vector/schema validation, safe fixed query scoring and SQLite format detection. Upgrade all participants together.
+4. Bound discovery, HTTP, redirections, search retries and progress polling. Never retry ambiguous writes automatically. Surface processing/provider failures in UI.
+5. Test contracts, invalid payloads, partial TCP reads, legacy rejection, storage persistence, client failure bounds and deletion confirmation. Run the same isolated Docker fault scenarios locally and in CI.
+6. Update README, walkthrough, protocol/rollback documentation and evidence. Capture real UI only after the actual provider walkthrough passes.
 
-## Constitution Check
+## Verification and delivery
 
-- Evidence-only claims: satisfied by using source inspection and marking runtime reliability unverified.
-- Explicit destructive actions: satisfied by confirmation-gated delete flow.
-- Reproducible demo: commands and external embedding prerequisite documented; runtime status disclosed.
-- Secret/local-state hygiene: inspect tracked environment/configuration and ignore local/generated state; do not expose values.
+`python scripts/check-demo.py` is the build/unit/three-node integration gate. It covers restart, stopped-node CRUD/search and reincorporation with bounded waits. Failure remains failure: do not weaken assertions to claim completion.
 
-## Project Structure
-
-- `README.md` — English landing page, architecture overview, demo, prerequisites and limitations.
-- `client/ui/app.py` — explicit confirmation guard around document deletion.
-- `.gitignore` — ignore local environments, Python bytecode and local environment file.
-- `.specify/` — Spec Kit templates, scripts, and integration metadata.
-- `.specify/memory/constitution.md` — project rules.
-- `specs/001-infochord-showcase/` — feature specification, this plan, and implementation checklist.
-
-## Verification
-
-- Run `specify check` and verify the current feature artifacts.
-- Run `docker compose config --quiet` if Docker CLI is available.
-- Compile changed Python files without importing runtime dependencies.
-- Review the UI logic to confirm the backend call is inside a guarded button branch.
-- Runtime and cluster smoke tests remain pending until Docker daemon and embedding endpoint are available.
-- Review the final diff, preserve existing standards edits, and do not push or merge.
+Record actual outcomes in `docs/validation.md`. Keep runtime evidence distinct from source-level behavior and deterministic fixtures. No main merge, public deployment, database cleanup or undocumented reliability claims.

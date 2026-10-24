@@ -1,19 +1,29 @@
 # Tasks: InfoChord Portfolio Showcase
 
-## Documentation and Spec Kit
+## Existing baseline
+- [x] Initialize Spec Kit, constitution and showcase artifacts.
+- [x] Publish the initial showcase branch and draft PR #1 (historical action, not re-verified by this implementation).
+- [x] Preserve unrelated local standards/configuration edits.
 
-- [x] T001 Initialize GitHub Spec Kit for Claude Code with PowerShell scripts.
-- [x] T002 Replace the starter constitution with InfoChord-specific evidence, safety, and showcase rules.
-- [x] T003 Write the evidence-qualified showcase specification and implementation plan.
-- [x] T004 Rewrite README in English with accurate architecture, requirements, start commands, demo workflow, and limitations.
-- [x] T005 Add local configuration and generated Python artifacts to ignore rules; remove tracked local `.env` and bytecode from the candidate.
+## Implementation
+- [x] Automatic three-node Compose demo; optional seven-node profile; loopback-only UI.
+- [x] Shared JSON v1 contracts, framed TCP and replacement of application pickle/jsonpickle use.
+- [x] New SQLite JSON format with refusal of legacy databases; isolated named volumes.
+- [x] Bounded client behavior, visible UI errors and provider failure tracking.
+- [x] Regression tests for text-chunk updates and query-tracking cleanup.
+- [x] Unit tests, deterministic provider fixture and Docker integration/failure orchestrator.
+- [x] CI workflow and safe diagnostic handling.
+- [x] Dependency lock, base-image digest and build-time tokenizer cache.
+- [x] Startup/shutdown scripts, protocol documentation and presentation walkthrough.
 
-## UI safety
+## Acceptance evidence — do not check until observed
+- [x] Complete hashed-environment local suite: 29 tests passed.
+- [x] Validate base + test Compose configuration and implementation whitespace checks.
+- [ ] Complete image build and containerized test run.
+- [ ] Passing multi-node CRUD/search/redirect gate.
+- [ ] Passing restart, node failure/recovery and provider outage scenarios.
+- [ ] Real-provider demo verified from a clean checkout.
+- [ ] Current screenshot and GIF captured from the verified walkthrough.
+- [ ] Final diff review, relevant commits and draft PR update.
 
-- [x] T006 Gate document deletion behind a non-empty filename, explicit confirmation, and a button action.
-- [ ] T007 Run the new regression test; Python runtime is unavailable in this environment.
-
-## Integration preparation
-
-- [ ] T008 Review the candidate diff and ensure pre-existing `agent-os/standards/` edits are not staged or overwritten.
-- [x] T009 Confirm why the PR cannot yet be opened (GitHub CLI is unauthenticated; no push/merge authorized); leave the remote unchanged.
+See `docs/validation.md` for concrete results and blockers. No merge to main is authorized by this task.
